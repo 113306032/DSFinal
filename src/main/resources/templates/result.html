@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Results for [[${query}]]</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f8f9fa; padding: 40px; max-width: 900px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 20px; }
+        h2 { color: #333; }
+        .home-btn { text-decoration: none; color: #2a5298; font-weight: bold; }
+        
+        .suggestion-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 30px; border-left: 5px solid #2196f3; }
+        
+        .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: transform 0.2s; }
+        .card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        
+        .movie-title { font-size: 1.4em; color: #1a0dab; text-decoration: none; font-weight: bold; display: block; margin-bottom: 5px; }
+        .movie-title:hover { text-decoration: underline; }
+        
+        .url-text { color: #006621; font-size: 0.9em; margin-bottom: 10px; display: block; }
+        
+        .score-badge { display: inline-block; background: #34a853; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; margin-bottom: 10px;}
+        
+        .stats { font-size: 0.85em; color: #555; margin-bottom: 10px; }
+        .keyword-pill { background: #f1f3f4; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
+        
+        .sub-tree { background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.9em; border-left: 3px solid #ccc; }
+        .sub-link { color: #5f6368; text-decoration: none; display: block; margin-bottom: 3px; }
+        .sub-link:hover { color: #1a0dab; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Results for: <span style="color: #d93025;" th:text="${query}"></span></h2>
+        <a href="/" class="home-btn">← Back to Search</a>
+    </div>
+
+    <div class="suggestion-box" th:if="${not #lists.isEmpty(relatedKeywords)}">
+        <strong>💡 Related Topics: </strong>
+        <span th:each="word : ${relatedKeywords}" th:text="${word} + ', '"></span>
+    </div>
+
+    <div th:if="${#lists.isEmpty(results)}">
+        <p>No suitable movie results found. Please try a different keyword.</p>
+    </div>
+
+    <div th:each="tree : ${results}" class="card">
+        <a th:href="${tree.root.url}" th:text="${tree.root.title}" class="movie-title" target="_blank"></a>
+        <span class="url-text" th:text="${tree.root.url}"></span>
+        
+        <div class="score-badge">Score: <span th:text="${#numbers.formatDecimal(tree.siteScore, 1, 1)}"></span></div>
+        
+        <div class="stats">
+            <strong>Matches: </strong>
+            <span th:each="entry : ${tree.root.keywordCounts}" class="keyword-pill" 
+                  th:if="${entry.value > 0}"
+                  th:text="${entry.key} + ': ' + ${entry.value}"></span>
+        </div>
+
+        <div class="sub-tree" th:if="${not #lists.isEmpty(tree.root.children)}">
+            <strong>🔗 Analyzed Sub-pages:</strong>
+            <div th:each="child : ${tree.root.children}">
+                <a th:href="${child.url}" class="sub-link" target="_blank">
+                    └ <span th:text="${child.title}"></span> 
+                    <span style="font-size: 0.8em; color: #888;">(Node Score: <span th:text="${child.nodeScore}"></span>)</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

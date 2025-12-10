@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Movie Search Engine</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); margin: 0; }
+        .search-container { text-align: center; background: white; padding: 50px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 400px; }
+        h1 { color: #333; margin-bottom: 10px; }
+        p { color: #666; margin-bottom: 30px; }
+        input[type="text"] { width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; transition: border 0.3s; }
+        input[type="text"]:focus { border-color: #2a5298; outline: none; }
+        button { width: 100%; padding: 15px; background-color: #2a5298; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; transition: background 0.3s; }
+        button:hover { background-color: #1e3c72; }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <h1>🎬 Cinema Finder</h1>
+        <p>Discover movies by keywords (e.g. Love, Space, Animals)</p>
+        <form action="/search" method="get">
+            <input type="text" name="query" placeholder="Type a keyword..." required>
+            <button type="submit">Search Movies</button>
+        </form>
+    </div>
+</body>
+</html>
