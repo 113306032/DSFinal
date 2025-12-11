@@ -20,6 +20,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.example.ds_final.model.WebNode;
 import com.example.ds_final.model.WebTree;
@@ -30,8 +31,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class SearchService {
 
     // TODO: 請在此填入你的 Google API 資訊
-    private final String GOOGLE_API_KEY = "AIzaSyA8FVvvz-QF_akeNpO8offtBpJq-_D13xY";
-    private final String SEARCH_ENGINE_ID = "952752be890eb41ec";
+    @Value("${google.api.key}")
+    private String GOOGLE_API_KEY;
+
+    @Value("${google.api.cx}")
+    private String SEARCH_ENGINE_ID;
 
     // Stage 3: Google Search (JSON 解析修復版)
     public List<String> googleSearch(String query) {

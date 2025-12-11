@@ -3,23 +3,95 @@
 <head>
     <title>Movie Search Engine</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); margin: 0; }
-        .search-container { text-align: center; background: white; padding: 50px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 400px; }
-        h1 { color: #333; margin-bottom: 10px; }
-        p { color: #666; margin-bottom: 30px; }
-        input[type="text"] { width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; transition: border 0.3s; }
-        input[type="text"]:focus { border-color: #2a5298; outline: none; }
-        button { width: 100%; padding: 15px; background-color: #2a5298; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; transition: background 0.3s; }
-        button:hover { background-color: #1e3c72; }
+        :root {
+            --primary-color: #2a5298;
+            --secondary-color: #1e3c72;
+            --accent-color: #00d2ff;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            /* 增加一點紋理或更豐富的漸層 */
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .search-container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95); /* 輕微透明 */
+            backdrop-filter: blur(10px); /* 毛玻璃效果 */
+            padding: 60px 40px;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 450px; /* 響應式優化：最大寬度 */
+            transition: transform 0.3s ease;
+        }
+        .search-container:hover {
+            transform: translateY(-5px);
+        }
+        h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 2.2rem;
+            letter-spacing: -0.5px;
+        }
+        p {
+            color: #666;
+            margin-bottom: 35px;
+            line-height: 1.5;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            box-sizing: border-box;
+            font-size: 16px;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            background-color: #f9f9f9;
+        }
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+            background-color: #fff;
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(42, 82, 152, 0.15); /* 聚焦光暈 */
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(30, 60, 114, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(30, 60, 114, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
     </style>
 </head>
 <body>
     <div class="search-container">
         <h1>🎬 Cinema Finder</h1>
-        <p>Discover movies by keywords (e.g. Love, Space, Animals)</p>
+        <p>Discover movies by keywords<br><small>(e.g. Love, Space, Animals)</small></p>
         <form action="/search" method="get">
-            <input type="text" name="query" placeholder="Type a keyword..." required>
+            <input type="text" name="query" placeholder="Type a keyword..." required autocomplete="off">
             <button type="submit">Search Movies</button>
         </form>
     </div>
