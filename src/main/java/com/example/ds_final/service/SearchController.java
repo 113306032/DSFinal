@@ -1,7 +1,8 @@
 package com.example.ds_final.service;
 
-import com.example.ds_final.model.WebTree;
-import com.example.ds_final.service.SearchService;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -9,9 +10,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import com.example.ds_final.model.WebTree;
 
 @Controller
 public class SearchController {
@@ -28,9 +27,32 @@ public class SearchController {
     public String search(@RequestParam String query, Model model) {
         System.out.println("User searching: " + query);
         
-        // 準備關鍵字清單 (全部轉小寫方便比對)
+        // 準備關鍵字清單：把整句與有意義的 token 都加入（方便頁面只出現片名一部分也能命中）
         ArrayList<String> keywords = new ArrayList<>();
-        keywords.add(query.toLowerCase());
+        if (query != null) {
+            String q = query.trim().toLowerCase();
+            if (!q.isEmpty()) {
+                // 完整片語
+                keywords.add(q);
+                // 依非字元數分割成 token（保留中文/英文/數字）
+                String[] parts = q.split("[^\\p{L}\\p{N}]+");
+                boolean anyLong = false;
+                StringBuilder joined = new StringBuilder();
+                for (String p : parts) {
+                    if (p.length() > 1) anyLong = true;
+                    if (p.length() > 1 && !keywords.contains(p)) {
+                        keywords.add(p);
+                    }
+                    joined.append(p);
+                }
+                // 處理使用者輸入像「天 空 之 城」這類每個 token 為單字的情況，加入無空格版本
+                String joinedNoSpace = joined.toString();
+                if (!anyLong && joinedNoSpace.length() > 1 && !keywords.contains(joinedNoSpace)) {
+                    keywords.add(joinedNoSpace);
+                }
+            }
+        }
+        // 一些固定的電影相關字詞
         keywords.add("movie");
         keywords.add("review");
         keywords.add("cast");
@@ -41,8 +63,13 @@ public class SearchController {
         // 2. 爬蟲 + 建樹 + 評分
         List<WebTree> results = new ArrayList<>();
         for (String url : potentialUrls) {
-            // 過濾顯而易見的非網頁連結
-            if (url.endsWith(".pdf") || url.contains("facebook.com") || url.contains("youtube.com")) continue;
+            // 過濾顯而易見的非網頁連結或不想要的來源（例如社群或捐款頁）
+            if (url.endsWith(".pdf")
+                    || url.contains("facebook.com")
+                    || url.contains("youtube.com")
+                    || url.contains("donate.wikimedia.org")
+                    || url.contains("Special:LandingPage")
+                    || url.contains("wmf_campaign")) continue;
 
             WebTree tree = searchService.processSite(url, keywords);
             

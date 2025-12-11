@@ -1,9 +1,19 @@
 package com.example.ds_final.service;
 
-import com.example.ds_final.model.WebNode;
-import com.example.ds_final.model.WebTree;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -11,14 +21,10 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.stream.Collectors;
+import com.example.ds_final.model.WebNode;
+import com.example.ds_final.model.WebTree;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class SearchService {
@@ -127,20 +133,57 @@ public class SearchService {
         }
     }
 
-    // Stage 1 Helper: 計算關鍵字次數
+    // Stage 1 Helper: 計算關鍵字次數（Boyer-Moore-Horspool 實作，並做 Unicode 正規化）
     private void countKeywords(WebNode node, String text, ArrayList<String> keywords) {
-        String lowerText = text.toLowerCase();
+        String lowerText = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFKC).toLowerCase();
         for (String k : keywords) {
-            // 這裡傳進來的 keywords 已經是小寫了嗎？在 Controller 處理比較好，或是這裡轉
-            // 簡單計算
+            String pat = k == null ? "" : Normalizer.normalize(k, Normalizer.Form.NFKC).toLowerCase().trim();
             int count = 0;
-            int idx = 0;
-            while ((idx = lowerText.indexOf(k, idx)) != -1) {
-                count++;
-                idx += k.length();
+            if (pat.length() == 0) {
+                node.keywordCounts.put(k, 0);
+                continue;
             }
+
+            int n = lowerText.length();
+            int m = pat.length();
+            if (n < m) {
+                node.keywordCounts.put(k, 0);
+                continue;
+            }
+
+            int[] shift = buildBmhShift(pat);
+            int i = 0;
+            while (i <= n - m) {
+                int j = m - 1;
+                while (j >= 0 && lowerText.charAt(i + j) == pat.charAt(j)) {
+                    j--;
+                }
+                if (j < 0) {
+                    count++;
+                    // 跳過整個模式以避免重疊匹配（與先前行為一致）
+                    i += m;
+                } else {
+                    char c = lowerText.charAt(i + m - 1);
+                    int shiftBy = shift[c];
+                    if (shiftBy <= 0) shiftBy = 1;
+                    i += shiftBy;
+                }
+            }
+
             node.keywordCounts.put(k, count);
         }
+    }
+
+    // 建立 BMH 移位表（支援 BMP 範圍）
+    private int[] buildBmhShift(String pattern) {
+        final int ALPH = 65536; // Java char 的範圍
+        int m = pattern.length();
+        int[] shift = new int[ALPH];
+        Arrays.fill(shift, m);
+        for (int i = 0; i < m - 1; i++) {
+            shift[pattern.charAt(i)] = m - 1 - i;
+        }
+        return shift;
     }
 
     // Stage 4: 語意分析 (從結果中找高頻字)
