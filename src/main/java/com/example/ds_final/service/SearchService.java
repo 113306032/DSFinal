@@ -13,15 +13,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
+import com.example.ds_final.model.RelatedKeyword;
 import com.example.ds_final.model.WebNode;
 import com.example.ds_final.model.WebTree;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -44,7 +46,7 @@ public class SearchService {
             // 策略：強制加上 review 並排除論壇字眼，讓結果更純淨
             String searchStrategy = query + " movie review -forum -thread -discussion -login";
             System.out.println("Google Searching for: " + searchStrategy);
-            
+
             String encodedQuery = URLEncoder.encode(searchStrategy, StandardCharsets.UTF_8);
             String urlStr = "https://www.googleapis.com/customsearch/v1?key=" + GOOGLE_API_KEY + "&cx=" + SEARCH_ENGINE_ID + "&q=" + encodedQuery;
 
@@ -86,6 +88,10 @@ public class SearchService {
     // Stage 2: 建立樹狀結構與爬蟲 (User-Agent 修復版)
     public WebTree processSite(String rootUrl, ArrayList<String> keywords) {
         try {
+            // 立即過濾已知不需要的來源（例如 Wikimedia 捐款 Landing Page）
+            if (isBlacklistedUrl(rootUrl)) {
+                return null;
+            }
             // 設定 User-Agent 偽裝成瀏覽器
             String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 
@@ -98,7 +104,19 @@ public class SearchService {
             String title = doc.title();
             if (title == null || title.isEmpty()) title = rootUrl;
 
+            // extract meta description or og:description as snippet, fallback to body prefix
+            String snippet = doc.select("meta[name=description]").attr("content");
+            if (snippet == null || snippet.isEmpty()) {
+                snippet = doc.select("meta[property=og:description]").attr("content");
+            }
+            if (snippet == null || snippet.isEmpty()) {
+                String body = doc.body() == null ? "" : doc.body().text();
+                snippet = body.length() > 300 ? body.substring(0, 300) : body;
+            }
+            if (snippet == null) snippet = "";
+
             WebNode rootNode = new WebNode(rootUrl, title);
+            rootNode.snippet = Normalizer.normalize(snippet, Normalizer.Form.NFKC).toLowerCase();
             countKeywords(rootNode, doc.text(), keywords);
             rootNode.setNodeScore(keywords);
 
@@ -120,6 +138,14 @@ public class SearchService {
                             .get();
 
                     WebNode childNode = new WebNode(subUrl, subDoc.title());
+                    // child snippet
+                    String cSnippet = subDoc.select("meta[name=description]").attr("content");
+                    if (cSnippet == null || cSnippet.isEmpty()) cSnippet = subDoc.select("meta[property=og:description]").attr("content");
+                    if (cSnippet == null || cSnippet.isEmpty()) {
+                        String cbody = subDoc.body() == null ? "" : subDoc.body().text();
+                        cSnippet = cbody.length() > 300 ? cbody.substring(0, 300) : cbody;
+                    }
+                    childNode.snippet = Normalizer.normalize(cSnippet == null ? "" : cSnippet, Normalizer.Form.NFKC).toLowerCase();
                     countKeywords(childNode, subDoc.text(), keywords);
                     childNode.setNodeScore(keywords);
                     rootNode.children.add(childNode);
@@ -135,6 +161,25 @@ public class SearchService {
             // 許多網站無法爬取是正常的，回傳 null 讓 Controller 忽略它
             return null;
         }
+    }
+
+    // 保守的黑名單判斷：匹配 Wikimedia 捐款 landing page，以及其他明顯不需要的路徑
+    private boolean isBlacklistedUrl(String url) {
+        if (url == null) return true;
+        String u = url.toLowerCase();
+        // 常見 Wikimedia 捐款 landing page 範例：
+        // https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&...&wmf_campaign=...
+        if (u.contains("donate.wikimedia.org")
+                || u.contains("special:landingpage")
+                || u.contains("wmf_campaign")
+                || (u.contains("wikimedia") && u.contains("donate"))) {
+            return true;
+        }
+
+        // 另外排除明顯不想要的 host/paths
+        if (u.endsWith(".pdf") || u.contains("facebook.com") || u.contains("youtube.com")) return true;
+
+        return false;
     }
 
     // Stage 1 Helper: 計算關鍵字次數（Boyer-Moore-Horspool 實作，並做 Unicode 正規化）
@@ -191,28 +236,178 @@ public class SearchService {
     }
 
     // Stage 4: 語意分析 (從結果中找高頻字)
-    public List<String> deriveRelatedKeywords(List<WebTree> rankedSites) {
-        Map<String, Integer> wordFreq = new HashMap<>();
-        
-        // 排除常見無意義字
-        Set<String> stopWords = Set.of("movie", "review", "film", "imdb", "login", "search", "menu", "watch", "trailer", "the", "and", "of", "rating");
+    public List<RelatedKeyword> deriveRelatedKeywords(List<WebTree> rankedSites) {
+        // TF-IDF implementation over top N documents (title + snippet + child titles/snippets)
+        int topDocs = Math.min(5, rankedSites == null ? 0 : rankedSites.size());
+        if (topDocs == 0) return List.of();
 
-        for (WebTree tree : rankedSites) {
-            // 只分析前 5 名的標題
-            if (rankedSites.indexOf(tree) > 4) break;
-            
-            String[] words = tree.root.title.toLowerCase().split("[^a-zA-Z]+"); // 只留英文字母
-            for (String w : words) {
-                if (w.length() > 3 && !stopWords.contains(w)) {
-                    wordFreq.put(w, wordFreq.getOrDefault(w, 0) + 1);
+        // Collect documents: title + snippet + child title/snippet
+        List<String> docs = new ArrayList<>();
+        for (int i = 0; i < topDocs; i++) {
+            WebTree tree = rankedSites.get(i);
+            if (tree == null || tree.root == null) {
+                docs.add("");
+                continue;
+            }
+            StringBuilder sb = new StringBuilder();
+            if (tree.root.title != null) sb.append(tree.root.title).append(' ');
+            if (tree.root.snippet != null) sb.append(tree.root.snippet).append(' ');
+            if (tree.root.children != null) {
+                for (var c : tree.root.children) {
+                    if (c.title != null) sb.append(c.title).append(' ');
+                    if (c.snippet != null) sb.append(c.snippet).append(' ');
                 }
+            }
+            docs.add(Normalizer.normalize(sb.toString(), Normalizer.Form.NFKC).toLowerCase());
+        }
+
+        // Tokenize documents and compute term frequencies and document frequencies
+        List<Map<String, Integer>> docTermFreqs = new ArrayList<>();
+        Map<String, Integer> df = new HashMap<>();
+
+    Set<String> stopWords = Set.of(
+        "movie", "review", "reviews", "film", "imdb", "login", "search", "menu", "watch", "trailer",
+        "the", "and", "of", "rating", "cast",
+        // common small stopwords
+        "to", "re", "a", "an", "in", "on", "for", "by", "with", "from", "this", "that", "is", "are", "be", "as", "at", "it", "its"
+    );
+
+        for (String doc : docs) {
+            Map<String, Integer> tf = new HashMap<>();
+            List<String> tokens = tokenize(doc);
+            // count tf
+            for (String t : tokens) {
+                if (t == null || t.isBlank()) continue;
+                if (stopWords.contains(t)) continue;
+                // filter numeric-only tokens
+                if (t.matches("^\\d+$")) continue;
+                tf.put(t, tf.getOrDefault(t, 0) + 1);
+            }
+            // update df
+            for (String term : tf.keySet()) {
+                df.put(term, df.getOrDefault(term, 0) + 1);
+            }
+            docTermFreqs.add(tf);
+        }
+
+        int N = docTermFreqs.size();
+        Map<String, Double> score = new HashMap<>();
+
+        for (int i = 0; i < N; i++) {
+            Map<String, Integer> tf = docTermFreqs.get(i);
+            for (Map.Entry<String, Integer> e : tf.entrySet()) {
+                String term = e.getKey();
+                double termFreq = e.getValue();
+                int docCount = df.getOrDefault(term, 0);
+                double idf = Math.log((double)(N + 1) / (docCount + 1)) + 1.0; // smooth idf
+                double tfidf = termFreq * idf;
+                score.put(term, score.getOrDefault(term, 0.0) + tfidf);
             }
         }
 
-        return wordFreq.entrySet().stream()
-                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
-                .limit(5)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
+    // sort terms by score and map to RelatedKeyword objects
+    List<RelatedKeyword> ranked = score.entrySet().stream()
+        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+        .map(e -> new RelatedKeyword(e.getKey(), e.getValue(), df.getOrDefault(e.getKey(), 0)))
+        // filter out single ASCII letters which are usually noise (e.g., 'e','o')
+        .filter(rk -> rk.term != null && !(rk.term.length() == 1 && rk.term.matches("^[a-z0-9]$")))
+        .limit(10)
+        .collect(Collectors.toList());
+
+    return ranked.subList(0, Math.min(5, ranked.size()));
+    }
+
+    // Simple heuristic tokenizer: detect CJK and use bigrams/unigrams, otherwise Latin tokenization
+    private List<String> tokenize(String text) {
+        if (text == null) return List.of();
+        // Quick check for presence of CJK characters
+        if (looksLikeCJK(text)) {
+            return tokenizeCJK(text);
+        } else {
+            return tokenizeLatin(text);
+        }
+    }
+
+    private boolean looksLikeCJK(String s) {
+        int cnt = 0;
+        int limit = Math.min(s.length(), 200);
+        for (int i = 0; i < limit; i++) {
+            char c = s.charAt(i);
+            Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+            if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                    || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                    || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                    || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                    || ub == Character.UnicodeBlock.HIRAGANA
+                    || ub == Character.UnicodeBlock.KATAKANA
+                    || ub == Character.UnicodeBlock.HANGUL_SYLLABLES) {
+                cnt++;
+            }
+        }
+        return cnt >= 1; // if any CJK char present, treat as CJK document
+    }
+
+    private List<String> tokenizeCJK(String s) {
+        // For mixed CJK+Latin text, keep Latin words together and only split CJK into uni/bi-grams.
+        String cleaned = s.replaceAll("\\p{Punct}", " ");
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        List<String> tokens = new ArrayList<>();
+
+        StringBuilder latinBuf = new StringBuilder();
+        // collect CJK chars positions for bigrams
+        StringBuilder cjkOnly = new StringBuilder();
+
+        for (int i = 0; i < cleaned.length(); i++) {
+            char c = cleaned.charAt(i);
+            if (isCJKChar(c)) {
+                // flush latin buffer
+                if (latinBuf.length() > 0) {
+                    String lat = latinBuf.toString().toLowerCase();
+                    tokens.addAll(tokenizeLatin(lat));
+                    latinBuf.setLength(0);
+                }
+                tokens.add(String.valueOf(c));
+                cjkOnly.append(c);
+            } else {
+                latinBuf.append(c);
+                // keep placeholder in cjkOnly to preserve alignment
+                cjkOnly.append(' ');
+            }
+        }
+        if (latinBuf.length() > 0) {
+            tokens.addAll(tokenizeLatin(latinBuf.toString().toLowerCase()));
+        }
+
+        // add bigrams only for consecutive CJK characters
+        for (int i = 0; i < cjkOnly.length() - 1; i++) {
+            char a = cjkOnly.charAt(i);
+            char b = cjkOnly.charAt(i + 1);
+            if (a != ' ' && b != ' ') {
+                tokens.add(cjkOnly.substring(i, i + 2));
+            }
+        }
+
+        return tokens;
+    }
+
+    private boolean isCJKChar(char c) {
+        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+        return ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || ub == Character.UnicodeBlock.HIRAGANA
+                || ub == Character.UnicodeBlock.KATAKANA
+                || ub == Character.UnicodeBlock.HANGUL_SYLLABLES;
+    }
+
+    private static final Pattern LATIN_TOKEN = Pattern.compile("[a-z0-9]+");
+    private List<String> tokenizeLatin(String s) {
+        List<String> tokens = new ArrayList<>();
+        var m = LATIN_TOKEN.matcher(s);
+        while (m.find()) {
+            tokens.add(m.group());
+        }
+        return tokens;
     }
 }

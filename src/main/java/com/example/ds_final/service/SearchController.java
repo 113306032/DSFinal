@@ -10,6 +10,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import com.example.ds_final.model.RelatedKeyword;
 import com.example.ds_final.model.WebTree;
 
 @Controller
@@ -91,8 +92,8 @@ public class SearchController {
         // 3. 排序 (分數高到低)
         results.sort(Comparator.comparingDouble((WebTree t) -> t.siteScore).reversed());
 
-        // 4. 語意分析推薦
-        List<String> related = searchService.deriveRelatedKeywords(results);
+    // 4. 語意分析推薦
+    List<RelatedKeyword> related = searchService.deriveRelatedKeywords(results);
 
         model.addAttribute("query", query);
         model.addAttribute("results", results);

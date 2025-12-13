@@ -204,8 +204,10 @@
         <span style="font-size: 1.2em;">💡</span>
         <div>
             <strong>Related Topics: </strong>
-            <span th:each="word, iterStat : ${relatedKeywords}" 
-                  th:text="${word} + ${!iterStat.last ? ', ' : ''}"></span>
+            <span th:each="rk, iterStat : ${relatedKeywords}">
+                <a th:href="@{/search(query=${query + ' ' + rk.term})}" class="keyword-pill" th:title="${'Docs: ' + rk.docCount + ', score: ' + #numbers.formatDecimal(rk.score,1,1)}" th:text="${rk.term + ' (' + rk.docCount + ', ' + #numbers.formatDecimal(rk.score,1,1) + ')'}"></a>
+                <span th:if="${!iterStat.last}"> </span>
+            </span>
         </div>
     </div>
 

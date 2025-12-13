@@ -9,12 +9,14 @@ public class WebNode {
     public ArrayList<WebNode> children;
     public String url;
     public String title;
+    public String snippet;
     public double nodeScore;
     public Map<String, Integer> keywordCounts;
 
     public WebNode(String url, String title) {
         this.url = url;
         this.title = title;
+        this.snippet = null;
         this.children = new ArrayList<>();
         this.keywordCounts = new HashMap<>();
         this.nodeScore = 0;
