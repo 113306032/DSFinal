@@ -273,7 +273,7 @@ public class SearchService {
 
     Set<String> stopWords = Set.of(
         "movie", "review", "reviews", "film", "imdb", "login", "search", "menu", "watch", "trailer",
-        "the", "and", "of", "rating", "cast",
+        "the", "and", "of", "rating", "cast", "your", "we",
         // common small stopwords
         "to", "re", "a", "an", "in", "on", "for", "by", "with", "from", "this", "that", "is", "are", "be", "as", "at", "it", "its", "you"
     );
