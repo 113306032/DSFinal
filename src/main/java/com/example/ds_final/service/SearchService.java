@@ -130,6 +130,9 @@ public class SearchService {
                 // 簡單過濾：不要爬回首頁，不要爬登入頁
                 if (subUrl.equals(rootUrl) || subUrl.contains("login") || subUrl.contains("signup")) continue;
 
+                // 也跳過已知黑名單的子連結（例如 Wikimedia 捐款 landing page、PDF、社群站等）
+                if (isBlacklistedUrl(subUrl)) continue;
+
                 try {
                     Document subDoc = Jsoup.connect(subUrl)
                             .userAgent(userAgent)
@@ -175,6 +178,9 @@ public class SearchService {
                 || (u.contains("wikimedia") && u.contains("donate"))) {
             return true;
         }
+
+        // IMDb helper / contribute pages often aren't useful for reviews/results
+        if (u.contains("help.imdb.com/imdb") || u.contains("contribute.imdb.com/czone")) return true;
 
         // 另外排除明顯不想要的 host/paths
         if (u.endsWith(".pdf") || u.contains("facebook.com") || u.contains("youtube.com")) return true;
@@ -269,7 +275,7 @@ public class SearchService {
         "movie", "review", "reviews", "film", "imdb", "login", "search", "menu", "watch", "trailer",
         "the", "and", "of", "rating", "cast",
         // common small stopwords
-        "to", "re", "a", "an", "in", "on", "for", "by", "with", "from", "this", "that", "is", "are", "be", "as", "at", "it", "its"
+        "to", "re", "a", "an", "in", "on", "for", "by", "with", "from", "this", "that", "is", "are", "be", "as", "at", "it", "its", "you"
     );
 
         for (String doc : docs) {
